@@ -8,7 +8,7 @@ import io
 from pathlib import Path
 from typing import Optional
 
-from .base import BackendUnavailable, OcrProvider, repo_root, setup_cuda_dlls
+from .base import BackendUnavailable, OcrProvider, repo_root, setup_cuda_dlls, suppress_c_output
 
 MODELS_DIR = repo_root() / 'models'
 MODEL_FILE = MODELS_DIR / 'Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf'
@@ -29,14 +29,28 @@ def _get_llm():
         import llama_cpp
         from llama_cpp.llama_chat_format import Qwen25VLChatHandler
 
-        chat_handler = Qwen25VLChatHandler(clip_model_path=str(MMPROJ_FILE))
-        _llm_instance = llama_cpp.Llama(
-            model_path=str(MODEL_FILE),
-            chat_handler=chat_handler,
-            n_gpu_layers=99,   # Toàn bộ layers đưa lên GPU NVIDIA
-            n_ctx=4096,
-            verbose=False,
-        )
+        # Disable low-level C logs from llama.cpp
+        try:
+            def _dummy_log(level, text, user_data):
+                pass
+            _cb = llama_cpp.llama_log_callback(_dummy_log)
+            llama_cpp.llama_log_set(_cb, None)
+        except Exception:
+            pass
+
+        # Completely silence C-level and Python loader output
+        with suppress_c_output():
+            chat_handler = Qwen25VLChatHandler(
+                clip_model_path=str(MMPROJ_FILE),
+                verbose=False,
+            )
+            _llm_instance = llama_cpp.Llama(
+                model_path=str(MODEL_FILE),
+                chat_handler=chat_handler,
+                n_gpu_layers=99,   # Toàn bộ layers đưa lên GPU NVIDIA
+                n_ctx=4096,
+                verbose=False,
+            )
     return _llm_instance
 
 
@@ -88,19 +102,20 @@ class QwenOcrProvider(OcrProvider):
             'so lieu, ma nguon, bang bieu va de bai trong hinh anh nay thanh Markdown ro rang, day du.'
         )
 
-        res = llm.create_chat_completion(
-            messages=[
-                {
-                    'role': 'user',
-                    'content': [
-                        {'type': 'image_url', 'image_url': {'url': data_uri}},
-                        {'type': 'text', 'text': user_text},
-                    ],
-                }
-            ],
-            max_tokens=2048,
-            temperature=0.1,
-        )
+        with suppress_c_output():
+            res = llm.create_chat_completion(
+                messages=[
+                    {
+                        'role': 'user',
+                        'content': [
+                            {'type': 'image_url', 'image_url': {'url': data_uri}},
+                            {'type': 'text', 'text': user_text},
+                        ],
+                    }
+                ],
+                max_tokens=2048,
+                temperature=0.1,
+            )
         choices = res.get('choices') or [{}]
         markdown = choices[0].get('message', {}).get('content') or ''
         return markdown.strip() or '*(Khong phat hien van ban co the doc duoc)*'

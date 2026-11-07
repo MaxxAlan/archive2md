@@ -122,10 +122,12 @@ def print_stage(step: int, total_steps: int, icon: str, title: str, subtitle: st
 
 
 class ProgressBar:
-    """Real-time progress bar with percentage, speed, elapsed time, and ETA."""
+    """Real-time progress bar with percentage, speed, elapsed time, and ETA.
+    Guaranteed strictly non-wrapping on Windows cmd/powershell/terminals.
+    """
 
     def __init__(self, total: int, label: str = "Tiến độ", unit: str = "tệp",
-                 bar_width: int = 20, is_active: bool = True) -> None:
+                 bar_width: int = 18, is_active: bool = True) -> None:
         self.total = max(1, total)
         self.current = 0
         self.label = label
@@ -166,22 +168,29 @@ class ProgressBar:
         percent_str = f"{int(pct * 100):>3}%"
         counts_str = f"[{self.current}/{self.total}]"
 
-        term_width = min(get_term_width(), 80)
+        term_width = get_term_width(80)
+
         left_part = f"  {ANSI.BOLD}{percent_str}{ANSI.RESET} {bar_str} {ANSI.B_WHITE}{counts_str}{ANSI.RESET}"
         mid_part = f" │ {ANSI.YELLOW}⚡ {speed_str}{ANSI.RESET} │ {ANSI.B_MAGENTA}⏳ Còn: ~{eta_str}{ANSI.RESET}"
 
-        # Truncate filename gracefully to prevent line wrapping
-        avail = max(10, term_width - 55)
+        # Calculate exact visible width of prefix to avoid overflowing terminal width
+        visible_prefix_len = 2 + 4 + 1 + self.bar_width + 1 + len(counts_str) + 3 + 2 + len(speed_str) + 3 + 9 + len(eta_str)
+        avail = max(0, term_width - visible_prefix_len - 5)
+
         file_disp = ""
-        if item_name:
-            truncated = truncate_middle(item_name, avail)
-            status_disp = f" ({status})" if status else ""
-            file_disp = f" │ {ANSI.GRAY}{truncated}{status_disp}{ANSI.RESET}"
+        if avail >= 10 and (item_name or status):
+            st_text = f" ({status})" if status else ""
+            if len(st_text) >= avail - 4:
+                file_disp = f" │ {ANSI.GRAY}{st_text[:avail]}{ANSI.RESET}"
+            else:
+                allowed_name = max(6, avail - len(st_text) - 1)
+                trunc_name = truncate_middle(item_name, allowed_name) if item_name else ""
+                file_disp = f" │ {ANSI.GRAY}{trunc_name}{st_text}{ANSI.RESET}"
 
         line = f"{left_part}{mid_part}{file_disp}"
 
         if self.is_tty:
-            sys.stdout.write(f"\r{ANSI.CLEAR_TO_END}{line}")
+            sys.stdout.write(f"\r{line}{ANSI.CLEAR_TO_END}")
             sys.stdout.flush()
         else:
             if self.current == self.total or self.current % max(1, self.total // 5) == 0:
@@ -190,7 +199,7 @@ class ProgressBar:
     def finish(self, message: str = "") -> None:
         elapsed = time.time() - self.start_time
         if self.is_tty:
-            sys.stdout.write(f"\r{ANSI.CLEAR_TO_END}")
+            sys.stdout.write(f"\r{ANSI.CLEAR_LINE}")
             sys.stdout.flush()
         icon = f"{ANSI.B_GREEN}✓{ANSI.RESET}"
         msg = f"{ANSI.GREEN}{message}{ANSI.RESET}" if message else f"{ANSI.GREEN}Hoàn tất ({self.total} {self.unit}){ANSI.RESET}"

@@ -6,11 +6,105 @@ import shutil
 import sys
 import time
 from abc import ABC, abstractmethod
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
 IS_WINDOWS = os.name == 'nt'
 _CACHE_DIR_NAME = 'cache'
+
+
+@contextmanager
+def suppress_c_output():
+    """Silence low-level C/C++ stdout & stderr (llama.cpp, clip.cpp, ggml, CUDA, mtmd) and Python streams.
+
+    Completely suppresses C runtime printf, Win32 console handles, and Python streams to protect the UI.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        old_stdout_fd = os.dup(1)
+        old_stderr_fd = os.dup(2)
+    except Exception:
+        yield
+        return
+
+    # Win32 console handle redirection
+    h_null = -1
+    h_old_out = None
+    h_old_err = None
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            h_null = kernel32.CreateFileW('NUL', 0x40000000, 0x00000001 | 0x00000002, None, 3, 0, None)
+            h_old_out = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+            h_old_err = kernel32.GetStdHandle(-12)  # STD_ERROR_HANDLE
+        except Exception:
+            h_null = -1
+
+    msvcrt = None
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            msvcrt = ctypes.cdll.msvcrt
+        except Exception:
+            msvcrt = None
+
+    devnull_file = open(os.devnull, 'w', encoding='utf-8')
+    old_stdout_py = sys.stdout
+    old_stderr_py = sys.stderr
+
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        if msvcrt:
+            try:
+                msvcrt._dup2(devnull_fd, 1)
+                msvcrt._dup2(devnull_fd, 2)
+            except Exception:
+                pass
+        if h_null != -1 and h_null != 0:
+            kernel32.SetStdHandle(-11, h_null)
+            kernel32.SetStdHandle(-12, h_null)
+        sys.stdout = devnull_file
+        sys.stderr = devnull_file
+        yield
+    finally:
+        try:
+            sys.stdout.flush()
+            sys.stderr.flush()
+        except Exception:
+            pass
+        sys.stdout = old_stdout_py
+        sys.stderr = old_stderr_py
+        try:
+            devnull_file.close()
+        except Exception:
+            pass
+        try:
+            if h_null != -1 and h_null != 0:
+                kernel32.SetStdHandle(-11, h_old_out)
+                kernel32.SetStdHandle(-12, h_old_err)
+                kernel32.CloseHandle(h_null)
+        except Exception:
+            pass
+        try:
+            if msvcrt:
+                try:
+                    msvcrt._dup2(old_stdout_fd, 1)
+                    msvcrt._dup2(old_stderr_fd, 2)
+                except Exception:
+                    pass
+            os.dup2(old_stdout_fd, 1)
+            os.dup2(old_stderr_fd, 2)
+            os.close(old_stdout_fd)
+            os.close(old_stderr_fd)
+            os.close(devnull_fd)
+        except Exception:
+            pass
 
 STANDARD_CACHE_SUBDIRS = {
     'tmp': 'Temporary archive extraction & document conversion scratchpad',

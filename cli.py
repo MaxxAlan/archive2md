@@ -15,7 +15,11 @@ import argparse
 import os
 import sys
 import time
+import warnings
 from pathlib import Path
+
+# Silence third-party deprecation & parsing warnings to preserve pristine UI
+warnings.filterwarnings('ignore')
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 

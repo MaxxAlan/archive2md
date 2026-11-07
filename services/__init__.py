@@ -13,6 +13,7 @@ from .base import (
     purge_stale_cache,
     repo_root,
     setup_cuda_dlls,
+    suppress_c_output,
 )
 from .registry import bootstrap, registry
 
@@ -30,4 +31,5 @@ __all__ = [
     'registry',
     'repo_root',
     'setup_cuda_dlls',
+    'suppress_c_output',
 ]

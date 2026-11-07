@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from .base import ConversionError, DocumentConverter, get_cache_dir
+from .base import ConversionError, DocumentConverter, get_cache_dir, suppress_c_output
 
 EXTENSIONS = (
     'docx', 'doc', 'pptx', 'ppt', 'xlsx', 'xls',
@@ -53,7 +53,8 @@ class MarkItDownConverter(DocumentConverter):
 
         try:
             tmp_file.write_bytes(data)
-            result = conv.convert(str(tmp_file))
+            with suppress_c_output():
+                result = conv.convert(str(tmp_file))
             markdown = (result.text_content or '').strip()
             if not markdown:
                 raise ConversionError(f'MarkItDown khong trich xuat duoc noi dung tu {file_name}')
