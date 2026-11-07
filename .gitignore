@@ -1,0 +1,55 @@
+# Environments & Virtual Envs
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python bytecode & runtime caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Operating System & IDE junk
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Project caches & temporary files (keep directory structure & README)
+cache/tmp/*
+cache/pycache/*
+cache/cuda/*
+cache/build/*
+cache/pip/*
+cache/models/*
+cache/ocr/*
+!cache/**/.gitkeep
+!cache/README.md
+*.tmp
+*.part
+*.log
+
+# Output directory (ignore generated files, keep directory)
+output/*
+!output/.gitkeep
+
+# Model weights (large GGUF binaries downloaded via setup.bat, do NOT commit to Git)
+models/*.gguf
+models/*.part
+!models/.gitkeep
+
+# Environment secrets
+.env
+.env.local
