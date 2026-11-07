@@ -91,7 +91,7 @@ def research(files, archive_name: str, model: str = 'gemini-flash-latest',
         headers={'Content-Type': 'application/json'},
         method='POST',
     )
-    with urllib.request.urlopen(req, timeout=300) as res:
+    with urllib.request.urlopen(req, timeout=60) as res:
         body = json.loads(res.read().decode('utf-8'))
     try:
         return body['candidates'][0]['content']['parts'][0]['text']

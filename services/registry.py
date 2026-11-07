@@ -39,13 +39,21 @@ class Registry:
 
     # ---- high-level operations ---------------------------------------------
     def convert(self, file_name: str, data: bytes) -> Optional[tuple[str, str]]:
-        """Route a file through the first available matching converter.
+        """Route a file through available matching converters in priority order.
+        Falls back to next converter if one fails.
         Returns (markdown, converter_id) or None when nothing claims the ext."""
         ext = file_name.rsplit('.', 1)[-1].lower() if '.' in file_name else ''
-        converter = self.converter_for(ext)
-        if converter is None:
-            return None
-        return converter.convert(file_name, data), converter.id
+        last_error = None
+        for c in self._converters:
+            if ext in c.extensions and c.is_available():
+                try:
+                    return c.convert(file_name, data), c.id
+                except Exception as e:
+                    last_error = e
+                    continue
+        if last_error:
+            raise last_error
+        return None
 
     def ocr(self, data: bytes, mime: str, file_name: Optional[str] = None,
             prompt: Optional[str] = None) -> Optional[str]:

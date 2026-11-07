@@ -11,8 +11,6 @@ from pathlib import Path
 
 from services.base import init_cache_system, repo_root
 
-init_cache_system()
-
 MODELS_DIR = repo_root() / 'models'
 
 # Official Hugging Face repository and model files
@@ -133,6 +131,7 @@ def download_file_with_resume(url: str, dest_path: Path, desc: str) -> bool:
 
 def ensure_models(interactive: bool = True, force: bool = False) -> bool:
     """Check for models and download if missing."""
+    init_cache_system()
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
     missing = []

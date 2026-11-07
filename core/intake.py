@@ -8,10 +8,11 @@ import os
 import tarfile
 import zipfile
 from pathlib import Path
-from typing import Iterator, Optional
+from typing import Callable, Iterator, Optional, Union
 
 from .classify import get_extension
 
+LogFn = Callable[[str], None]
 ARCHIVE_EXTS = frozenset({'zip', 'war', 'jar', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz'})
 MAX_ENTRY_BYTES = 512 * 1024 * 1024   # 512MB per entry safety cap
 MAX_TOTAL_ENTRIES = 50_000            # zip-bomb cap
@@ -21,8 +22,9 @@ class IntakeError(RuntimeError):
     pass
 
 
-def _extract_zip(data: bytes) -> Iterator[tuple[str, bytes]]:
-    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+def _extract_zip(source: Union[bytes, Path, str]) -> Iterator[tuple[str, bytes]]:
+    target = io.BytesIO(source) if isinstance(source, bytes) else str(source)
+    with zipfile.ZipFile(target) as zf:
         count = 0
         for info in zf.infolist():
             if info.is_dir():
@@ -35,9 +37,13 @@ def _extract_zip(data: bytes) -> Iterator[tuple[str, bytes]]:
             yield info.filename, zf.read(info)
 
 
-def _extract_tar(data: bytes) -> Iterator[tuple[str, bytes]]:
-    # tarfile auto-detects gz/bz2/xz compression from the stream.
-    with tarfile.open(fileobj=io.BytesIO(data), mode='r:*') as tf:
+def _extract_tar(source: Union[bytes, Path, str]) -> Iterator[tuple[str, bytes]]:
+    # tarfile auto-detects gz/bz2/xz compression from the stream or filename.
+    if isinstance(source, bytes):
+        tf = tarfile.open(fileobj=io.BytesIO(source), mode='r:*')
+    else:
+        tf = tarfile.open(name=str(source), mode='r:*')
+    with tf:
         count = 0
         for member in tf:
             if not member.isfile():
@@ -53,19 +59,19 @@ def _extract_tar(data: bytes) -> Iterator[tuple[str, bytes]]:
             yield member.name, fh.read()
 
 
-def _extract_7z(data: bytes) -> Iterator[tuple[str, bytes]]:
+def _extract_7z(source: Union[bytes, Path, str]) -> Iterator[tuple[str, bytes]]:
     try:
         import py7zr
     except ImportError as e:
         raise IntakeError(
             'py7zr chua cai — chay setup.ps1 (venv core).'
         ) from e
-    # py7zr 1.x removed in-memory readall(); extract to cache/tmp and walk.
     import shutil
     from services.base import get_cache_dir  # local import: avoid cycle at module load
     tmp = Path(shutil.mkdtemp(prefix='7z-', dir=str(get_cache_dir('tmp'))))
     try:
-        with py7zr.SevenZipFile(io.BytesIO(data), mode='r') as sz:
+        target = io.BytesIO(source) if isinstance(source, bytes) else str(source)
+        with py7zr.SevenZipFile(target, mode='r') as sz:
             sz.extractall(tmp)
         for dirpath, _dirnames, filenames in os.walk(tmp):
             for fname in filenames:
@@ -77,16 +83,16 @@ def _extract_7z(data: bytes) -> Iterator[tuple[str, bytes]]:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _extract_rar(data: bytes) -> Iterator[tuple[str, bytes]]:
+def _extract_rar(source: Union[bytes, Path, str]) -> Iterator[tuple[str, bytes]]:
     try:
         import rarfile
     except ImportError as e:
         raise IntakeError(
             'rarfile chua cai — chay: venv python -m pip install rarfile (hoac setup.ps1)'
         ) from e
-    # rarfile needs an external helper (unrar/unar/7z/bsdtar) on Windows.
+    target = io.BytesIO(source) if isinstance(source, bytes) else str(source)
     try:
-        with rarfile.RarFile(io.BytesIO(data)) as rf:
+        with rarfile.RarFile(target) as rf:
             for info in rf.infolist():
                 if info.is_dir():
                     continue
@@ -99,22 +105,27 @@ def _extract_rar(data: bytes) -> Iterator[tuple[str, bytes]]:
         ) from e
 
 
-def extract_archive_bytes(ext: str, data: bytes) -> Iterator[tuple[str, bytes]]:
-    """Dispatch to the right extractor for one archive payload."""
+def extract_archive(ext: str, source: Union[bytes, Path, str]) -> Iterator[tuple[str, bytes]]:
+    """Dispatch to the right extractor for one archive payload or file path."""
     if ext in ('zip', 'war', 'jar'):
-        yield from _extract_zip(data)
+        yield from _extract_zip(source)
     elif ext in ('tar', 'gz', 'tgz', 'bz2', 'xz'):
-        yield from _extract_tar(data)
+        yield from _extract_tar(source)
     elif ext == '7z':
-        yield from _extract_7z(data)
+        yield from _extract_7z(source)
     elif ext == 'rar':
-        yield from _extract_rar(data)
+        yield from _extract_rar(source)
     else:
         raise IntakeError(f'Khong ho tro dinh dang thay doi: .{ext}')
 
 
-def iter_archive_files(ext: str, data: bytes, origin: str, depth: int,
-                       max_depth: int) -> Iterator[tuple[str, bytes, Optional[str]]]:
+def extract_archive_bytes(ext: str, data: bytes) -> Iterator[tuple[str, bytes]]:
+    """Backward-compatible alias for extract_archive with bytes."""
+    yield from extract_archive(ext, data)
+
+
+def iter_archive_files(ext: str, source: Union[bytes, Path, str], origin: str, depth: int,
+                       max_depth: int, log: Optional[LogFn] = None) -> Iterator[tuple[str, bytes, Optional[str]]]:
     """Recursively unpack; yields (inner_path, data, origin) for leaf files.
 
     Nested archives recurse with depth+1; origin is the 'a.zip > b.rar' chain.
@@ -124,16 +135,17 @@ def iter_archive_files(ext: str, data: bytes, origin: str, depth: int,
         return
     chain = origin or None
     try:
-        entries = list(extract_archive_bytes(ext, data))
+        entries = list(extract_archive(ext, source))
     except (IntakeError, zipfile.BadZipFile, tarfile.TarError, OSError, ValueError) as e:
-        print(f'[intake] Bo qua khong giai nen duoc {origin}: {e}')
+        if log:
+            log(f'[intake] Bo qua khong giai nen duoc {origin}: {e}')
         return
     for name, payload in entries:
         inner_path = f'{chain} > {name}' if chain else name
         norm_path = name.replace('\\', '/').lstrip('/')
         entry_ext = get_extension(norm_path)
         if entry_ext in ARCHIVE_EXTS:
-            yield from iter_archive_files(entry_ext, payload, inner_path, depth + 1, max_depth)
+            yield from iter_archive_files(entry_ext, payload, inner_path, depth + 1, max_depth, log=log)
         else:
             # Display path nests nested-archive entries under their archive chain:
             # 'Login.zip > src.zip' + 'App.java' → 'Login.zip/src.zip/App.java'
@@ -141,7 +153,8 @@ def iter_archive_files(ext: str, data: bytes, origin: str, depth: int,
             yield display, payload, chain
 
 
-def iter_directory(root: Path, max_depth: int = 5) -> Iterator[tuple[str, bytes, Optional[str]]]:
+def iter_directory(root: Path, max_depth: int = 5,
+                   log: Optional[LogFn] = None) -> Iterator[tuple[str, bytes, Optional[str]]]:
     """Walk a real directory; yields (relative_path, data, origin)."""
     for dirpath, dirnames, filenames in os.walk(root):
         # Skip common junk dirs at source
@@ -155,24 +168,25 @@ def iter_directory(root: Path, max_depth: int = 5) -> Iterator[tuple[str, bytes,
             try:
                 data = full.read_bytes()
             except OSError as e:
-                print(f'[intake] Khong doc duoc {rel}: {e}')
+                if log:
+                    log(f'[intake] Khong doc duoc {rel}: {e}')
                 continue
             if entry_ext in ARCHIVE_EXTS:
-                yield from iter_archive_files(entry_ext, data, rel, 1, max_depth)
+                yield from iter_archive_files(entry_ext, data, rel, 1, max_depth, log=log)
             else:
                 yield rel, data, None
 
 
-def iter_input(input_path: Path, max_depth: int = 5) -> Iterator[tuple[str, bytes, Optional[str]]]:
+def iter_input(input_path: Path, max_depth: int = 5,
+               log: Optional[LogFn] = None) -> Iterator[tuple[str, bytes, Optional[str]]]:
     """Main entry: (input file | dir) → stream of (path, data, origin)."""
     if input_path.is_dir():
-        yield from iter_directory(input_path)
+        yield from iter_directory(input_path, max_depth=max_depth, log=log)
         return
     if not input_path.is_file():
         raise IntakeError(f'Input khong ton tai: {input_path}')
-    data = input_path.read_bytes()
     ext = get_extension(input_path.name)
     if ext in ARCHIVE_EXTS:
-        yield from iter_archive_files(ext, data, input_path.name, 0, max_depth)
+        yield from iter_archive_files(ext, input_path, input_path.name, 0, max_depth, log=log)
     else:
-        yield input_path.name, data, None
+        yield input_path.name, input_path.read_bytes(), None

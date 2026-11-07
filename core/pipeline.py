@@ -73,12 +73,13 @@ def _new_extracted_file(raw_path: str, data: bytes, origin: Optional[str],
                 )
                 f.raw_content = f.markdown_content
         elif f.is_binary:
-            data.decode('utf-8', errors='strict')  # strict test; raises → junk content
+            f.is_auxiliary = True
+            f.auxiliary_reason = f.auxiliary_reason or 'Tập tin nhị phân'
+            f.raw_content = ''
             f.markdown_content = (
                 f'> ⚙️ **Tập tin nhị phân:** `{name}` ({ext.upper()})\n> '
                 f'Kích thước: {len(data) / 1024:.1f} KB *(Đã bỏ qua nội dung thô)*'
             )
-            f.raw_content = ''
         else:
             f.raw_content = data.decode('utf-8', errors='strict')
             f.markdown_content = ''
@@ -130,13 +131,13 @@ def build_files(input_path: Path, max_depth: int = 5,
     """Intake + classify for every leaf file of the input."""
     files: list[ExtractedFile] = []
     if input_path.is_dir():
-        source = iter_directory(input_path, max_depth=max_depth)
+        source = iter_directory(input_path, max_depth=max_depth, log=log)
         default_origin = None
     else:
         ext = get_extension(input_path.name)
         if ext in ARCHIVE_EXTS:
             default_origin = input_path.name
-            source = iter_archive_files(ext, input_path.read_bytes(), input_path.name, 0, max_depth)
+            source = iter_archive_files(ext, input_path, input_path.name, 0, max_depth, log=log)
         else:
             source = iter_one_file(input_path)
             default_origin = None
@@ -283,6 +284,10 @@ def run(input_path: Path, output_dir: Path, *,
             else:
                 msg = "Không phát hiện hình ảnh cần nhận diện OCR (Bỏ qua)"
             print(f"  {ANSI.GRAY}✓ {msg}{ANSI.RESET}")
+
+    # Free all retained media_bytes across all files to minimize memory before Stage 4
+    for f in files:
+        f.media_bytes = None
 
     # ── Stage 4: Markdown Assembly & Output ──────────────────────────────────
     if show_ui:

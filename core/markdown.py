@@ -106,6 +106,7 @@ def build_combined_markdown(files: list[ExtractedFile], stats: ExtractionStats,
     now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     out: list[str] = []
 
+    out.append('<a id="top"></a>')
     out.append(f'# 📦 Tổng hợp dữ liệu: `{archive_name}`')
     out.append('')
     out.append(f'> Tài liệu được tạo tự động bởi **Archive2MD** vào lúc **{now}**.')
@@ -140,6 +141,7 @@ def build_combined_markdown(files: list[ExtractedFile], stats: ExtractionStats,
         out.append('')
 
     if include_toc:
+        out.append('<a id="table-of-contents"></a>')
         out.append('## 📑 Mục lục tài liệu')
         out.append('')
         for idx, f in enumerate(files, 1):
@@ -171,7 +173,7 @@ def build_combined_markdown(files: list[ExtractedFile], stats: ExtractionStats,
             out.append('')
         out.append(file_body_markdown(file))
         out.append('')
-        out.append('[⬆ Về đầu trang](#-tổng-hợp-dữ-liệu-archive) · [📑 Mục lục](#-mục-lục-tài-liệu)')
+        out.append('[⬆ Về đầu trang](#top) · [📑 Mục lục](#table-of-contents)')
         out.append('')
         out.append('---')
         out.append('')

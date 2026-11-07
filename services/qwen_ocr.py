@@ -116,7 +116,8 @@ class QwenOcrProvider(OcrProvider):
                 bg = Image.new('RGB', img.size, (255, 255, 255))
                 if img.mode == 'P':
                     img = img.convert('RGBA')
-                mask = img.split()[-1] if len(img.split()) == 4 else None
+                channels = img.split()
+                mask = channels[-1] if len(channels) == 4 else None
                 bg.paste(img, mask=mask)
                 img = bg
             elif img.mode != 'RGB':

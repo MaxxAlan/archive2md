@@ -12,6 +12,26 @@ from typing import Optional
 
 IS_WINDOWS = os.name == 'nt'
 _CACHE_DIR_NAME = 'cache'
+_cached_crts = None
+
+
+def _get_crts() -> list:
+    global _cached_crts
+    if _cached_crts is None:
+        _cached_crts = []
+        if IS_WINDOWS:
+            try:
+                import ctypes
+                for libname in ('api-ms-win-crt-stdio-l1-1-0.dll', 'ucrtbase.dll', 'msvcrt.dll'):
+                    try:
+                        c = ctypes.CDLL(libname)
+                        if hasattr(c, '_dup2'):
+                            _cached_crts.append(c)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+    return _cached_crts
 
 
 @contextmanager
@@ -45,19 +65,7 @@ def suppress_c_output():
         except Exception:
             h_null = -1
 
-    crts = []
-    if IS_WINDOWS:
-        try:
-            import ctypes
-            for libname in ('api-ms-win-crt-stdio-l1-1-0.dll', 'ucrtbase.dll', 'msvcrt.dll'):
-                try:
-                    c = ctypes.CDLL(libname)
-                    if hasattr(c, '_dup2'):
-                        crts.append(c)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+    crts = _get_crts()
 
     devnull_file = open(os.devnull, 'w', encoding='utf-8')
     old_stdout_py = sys.stdout

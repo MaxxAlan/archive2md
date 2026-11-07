@@ -11,8 +11,11 @@ from .classify import estimate_tokens
 from .types import ExtractedFile
 
 
+LogFn = Callable[[str], None]
+
+
 def run_ocr(files: list[ExtractedFile], prompt: Optional[str] = None,
-            limit: int = 0, log=print,
+            limit: int = 0, log: Optional[LogFn] = None,
             progress_cb: Optional[Callable[[int, int, str, str], None]] = None) -> int:
     """OCR every eligible selected file (media bytes were retained by intake).
 
@@ -78,6 +81,8 @@ def run_ocr(files: list[ExtractedFile], prompt: Optional[str] = None,
                 progress_cb(i, total, f.name, f"Lỗi: {e}")
             elif log:
                 log(f'[ocr] Lỗi {f.path} ({took:.1f}s): {e}')
+        finally:
+            f.media_bytes = None
 
     if not progress_cb and log:
         log(f'[ocr] Hoàn thành tự động OCR {ok}/{total} file.')
