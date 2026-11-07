@@ -51,7 +51,7 @@ def run_ocr(files: list[ExtractedFile], prompt: Optional[str] = None,
         try:
             markdown = registry.ocr(f.media_bytes, f.mime_type or 'image/png', f.name, prompt)
             took = time.time() - t0
-            if markdown:
+            if markdown and not markdown.startswith('*('):
                 f.ocr_status = 'success'
                 f.markdown_content = markdown
                 f.raw_content = markdown
@@ -65,9 +65,11 @@ def run_ocr(files: list[ExtractedFile], prompt: Optional[str] = None,
                     log(f'[ocr] OK {f.name} ({took:.1f}s)')
             else:
                 f.ocr_status = 'failed'
-                f.ocr_error = 'Provider trả về rỗng'
+                f.ocr_error = markdown or 'Provider trả về rỗng'
+                f.markdown_content = markdown or f'*(Không có nội dung nhận diện từ {f.name})*'
+                f.raw_content = f.markdown_content
                 if progress_cb:
-                    progress_cb(i, total, f.name, "Rỗng")
+                    progress_cb(i, total, f.name, "Bỏ qua")
         except Exception as e:  # noqa: BLE001 — per-file failure only
             f.ocr_status = 'failed'
             f.ocr_error = str(e)

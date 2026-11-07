@@ -45,13 +45,19 @@ def suppress_c_output():
         except Exception:
             h_null = -1
 
-    msvcrt = None
+    crts = []
     if IS_WINDOWS:
         try:
             import ctypes
-            msvcrt = ctypes.cdll.msvcrt
+            for libname in ('api-ms-win-crt-stdio-l1-1-0.dll', 'ucrtbase.dll', 'msvcrt.dll'):
+                try:
+                    c = ctypes.CDLL(libname)
+                    if hasattr(c, '_dup2'):
+                        crts.append(c)
+                except Exception:
+                    pass
         except Exception:
-            msvcrt = None
+            pass
 
     devnull_file = open(os.devnull, 'w', encoding='utf-8')
     old_stdout_py = sys.stdout
@@ -60,10 +66,10 @@ def suppress_c_output():
     try:
         os.dup2(devnull_fd, 1)
         os.dup2(devnull_fd, 2)
-        if msvcrt:
+        for c in crts:
             try:
-                msvcrt._dup2(devnull_fd, 1)
-                msvcrt._dup2(devnull_fd, 2)
+                c._dup2(devnull_fd, 1)
+                c._dup2(devnull_fd, 2)
             except Exception:
                 pass
         if h_null != -1 and h_null != 0:
@@ -92,10 +98,10 @@ def suppress_c_output():
         except Exception:
             pass
         try:
-            if msvcrt:
+            for c in crts:
                 try:
-                    msvcrt._dup2(old_stdout_fd, 1)
-                    msvcrt._dup2(old_stderr_fd, 2)
+                    c._dup2(old_stdout_fd, 1)
+                    c._dup2(old_stderr_fd, 2)
                 except Exception:
                     pass
             os.dup2(old_stdout_fd, 1)

@@ -4,10 +4,14 @@
 # Also collects stats. This is the single entry the CLI calls.
 # ============================================================================
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
+
+# Globally silence unraisable exceptions on Windows
+sys.unraisablehook = lambda u: None
 
 from services import registry
 
@@ -172,8 +176,6 @@ def run(input_path: Path, output_dir: Path, *,
         show_ui: bool = True,
         interactive_ocr: bool = False) -> RunResult:
     """Full pipeline. Returns the run summary including the file list."""
-    from services import qwen_ocr as qwen_module  # lazy: for shutdown()
-
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -324,7 +326,6 @@ def run(input_path: Path, output_dir: Path, *,
         elif individual_dir:
             print(f"  {ANSI.B_GREEN}✓{ANSI.RESET} Đã xuất thư mục '{individual_dir.name}' ({len(selected)} tệp .md) {ANSI.GRAY}({time.time() - t0:.2f}s){ANSI.RESET}")
 
-    qwen_module.shutdown()
     return RunResult(
         files=selected, stats=stats, output_dir=output_dir,
         combined_path=combined_path, individual_dir=individual_dir,

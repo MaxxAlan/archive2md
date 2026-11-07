@@ -21,6 +21,11 @@ from pathlib import Path
 # Silence third-party deprecation & parsing warnings to preserve pristine UI
 warnings.filterwarnings('ignore')
 
+# Silence any unraisable C-level GC exceptions on exit (e.g. CUDA context cleanup in llama-cpp)
+def _silent_unraisablehook(unraisable):
+    pass
+sys.unraisablehook = _silent_unraisablehook
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Initialize centralized cache management early (routes bytecode into cache/pycache for fast startup)
