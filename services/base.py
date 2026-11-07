@@ -185,19 +185,24 @@ def init_cache_system() -> dict[str, Path]:
     sys.dont_write_bytecode = False
     os.environ['PYTHONPYCACHEPREFIX'] = str(paths['pycache'])
 
-    # 3. Standard tempfile & OS environment
+    # 3. Standard tempfile & OS environment (strictly inside project cache)
     import tempfile
     tempfile.tempdir = str(paths['tmp'])
     os.environ['TEMP'] = str(paths['tmp'])
     os.environ['TMP'] = str(paths['tmp'])
+    os.environ['TMPDIR'] = str(paths['tmp'])
 
-    # 4. Third-party frameworks & toolchain caches
+    # 4. Third-party frameworks & toolchain caches (strictly inside project cache)
     os.environ['CUDA_CACHE_PATH'] = str(paths['cuda'])
     os.environ['HF_HOME'] = str(paths['models'] / 'huggingface')
     os.environ['HUGGINGFACE_HUB_CACHE'] = str(paths['models'] / 'huggingface' / 'hub')
     os.environ['TRANSFORMERS_CACHE'] = str(paths['models'] / 'huggingface')
     os.environ['TORCH_HOME'] = str(paths['models'] / 'torch')
     os.environ['PIP_CACHE_DIR'] = str(paths['pip'])
+    os.environ['XDG_CACHE_HOME'] = str(cache_root)
+    os.environ['XDG_DATA_HOME'] = str(cache_root)
+    os.environ['XDG_CONFIG_HOME'] = str(cache_root)
+    os.environ['TIKTOKEN_CACHE_DIR'] = str(paths['models'])
 
     # 5. Move any loose test/build files from cache root to cache/build
     try:

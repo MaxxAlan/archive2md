@@ -9,10 +9,15 @@ rem ============================================================================
 set "PYTHONPYCACHEPREFIX=%~dp0cache\pycache"
 set "TEMP=%~dp0cache\tmp"
 set "TMP=%~dp0cache\tmp"
+set "TMPDIR=%~dp0cache\tmp"
 set "CUDA_CACHE_PATH=%~dp0cache\cuda"
 set "HF_HOME=%~dp0cache\models\huggingface"
 set "TORCH_HOME=%~dp0cache\models\torch"
 set "PIP_CACHE_DIR=%~dp0cache\pip"
+set "XDG_CACHE_HOME=%~dp0cache"
+set "XDG_DATA_HOME=%~dp0cache"
+set "XDG_CONFIG_HOME=%~dp0cache"
+set "TIKTOKEN_CACHE_DIR=%~dp0cache\models"
 
 rem ----------------------------------------------------------------------------
 rem Kiem tra moi truong ao .venv. Neu chua co, tu dong hoi chay setup.bat
