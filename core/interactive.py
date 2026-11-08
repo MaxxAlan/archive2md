@@ -5,7 +5,7 @@
 from pathlib import Path
 from typing import Optional, Tuple
 
-from .ui import ANSI, init_terminal
+from .ui import ANSI, display_width, init_terminal
 
 
 def prompt_interactive() -> Optional[Tuple[Path, Path, str]]:
@@ -17,13 +17,16 @@ def prompt_interactive() -> Optional[Tuple[Path, Path, str]]:
     Returns (input_path, output_dir, mode) or None if user cancelled.
     """
     init_terminal()
-    width = 66
-    line = "─" * width
+    width = 68
+    top_prefix = "╭─ Archive2MD 📦➡️📝 · Trình Chuyển Đổi Kho Lưu Trữ "
+    dashes_needed = max(4, width - display_width(top_prefix))
+    top_line = top_prefix + ("─" * dashes_needed)
+    bot_line = "╰" + ("─" * (display_width(top_line) - 1))
 
     print()
-    print(f"{ANSI.B_CYAN}╭─ Archive2MD 📦➡️📝 · Trình Chuyển Đổi Kho Lưu Trữ ──────────{ANSI.RESET}")
+    print(f"{ANSI.B_CYAN}{top_line}{ANSI.RESET}")
     print(f"{ANSI.B_CYAN}│{ANSI.RESET}  {ANSI.GRAY}Chế độ tương tác từng bước (Interactive Setup Wizard){ANSI.RESET}")
-    print(f"{ANSI.B_CYAN}╰{line}{ANSI.RESET}\n")
+    print(f"{ANSI.B_CYAN}{bot_line}{ANSI.RESET}\n")
 
     # 1. Ask for input path
     while True:

@@ -3,6 +3,7 @@
 #   intake → classify → convert → ocr → markdown → output files
 # Also collects stats. This is the single entry the CLI calls.
 # ============================================================================
+import gc
 import os
 import sys
 import time
@@ -25,18 +26,27 @@ from .classify import (
 )
 from .convert import convert_or_placeholder, is_convert_candidate, run_conversion
 from .intake import ARCHIVE_EXTS, iter_directory, iter_archive_files
-from .markdown import build_combined_markdown, build_individual_markdown
+from .markdown import (
+    build_combined_markdown,
+    build_individual_markdown,
+    stream_write_combined_markdown,
+)
 from .ocr import run_ocr
 from .types import ExtractionStats, ExtractedFile
-from .ui import ANSI, ProgressBar, format_bytes, print_stage
+from .ui import ANSI, ProgressBar, format_bytes, print_stage, truncate_middle
 
 # OCR giữ nguyên bytes media — không giới hạn dung lượng (yêu cầu: chạy với
 # mọi kích thước file / số lượng). Llama server tự quyết định kết nạp hay lỗi.
 LogFn = Callable[[str], None]
 
 
+MAX_TEXT_PREVIEW_BYTES = 5 * 1024 * 1024  # 5MB safety cap per file to prevent single giant file OOM
+
+
 def _new_extracted_file(raw_path: str, data: bytes, origin: Optional[str],
-                        log: Optional[LogFn] = None) -> ExtractedFile:
+                        log: Optional[LogFn] = None,
+                        skip_junk: bool = True,
+                        skip_auxiliary: bool = True) -> ExtractedFile:
     norm_path = raw_path.replace('\\', '/').lstrip('/')
     name = norm_path.rsplit('/', 1)[-1] or norm_path
     ext = get_extension(norm_path)
@@ -52,7 +62,18 @@ def _new_extracted_file(raw_path: str, data: bytes, origin: Optional[str],
         is_auxiliary=is_aux, auxiliary_reason=aux_reason,
     )
 
-    # Retain candidate bytes for document conversion & OCR
+    # Early discard for junk/auxiliary: zero memory retention (no text decoding, no media bytes)
+    if (f.is_junk and skip_junk) or (f.is_auxiliary and skip_auxiliary):
+        f.selected = False
+        f.media_bytes = None
+        f.raw_content = ""
+        f.markdown_content = ""
+        f.lines_count = 0
+        f.word_count = 0
+        f.token_estimate = 0
+        return f
+
+    # Retain candidate bytes for document conversion & OCR only for selected files
     if is_convert_candidate(ext) or f.category == 'media' or ext == 'pdf':
         f.media_bytes = data
 
@@ -81,7 +102,11 @@ def _new_extracted_file(raw_path: str, data: bytes, origin: Optional[str],
                 f'Kích thước: {len(data) / 1024:.1f} KB *(Đã bỏ qua nội dung thô)*'
             )
         else:
-            f.raw_content = data.decode('utf-8', errors='strict')
+            if len(data) > MAX_TEXT_PREVIEW_BYTES:
+                preview = data[:MAX_TEXT_PREVIEW_BYTES].decode('utf-8', errors='replace')
+                f.raw_content = preview + f'\n\n> ⚠️ *Tập tin rất lớn ({format_bytes(len(data))}). Đã trích xuất {format_bytes(MAX_TEXT_PREVIEW_BYTES)} đầu.*'
+            else:
+                f.raw_content = data.decode('utf-8', errors='strict')
             f.markdown_content = ''
     except UnicodeDecodeError:
         # Strict decode failed → treat as binary junk content
@@ -126,6 +151,8 @@ def _compute_stats(files: list[ExtractedFile]) -> ExtractionStats:
 
 
 def build_files(input_path: Path, max_depth: int = 5,
+                skip_junk: bool = True,
+                skip_auxiliary: bool = True,
                 progress_cb: Optional[Callable[[int, str], None]] = None,
                 log: Optional[LogFn] = None) -> list[ExtractedFile]:
     """Intake + classify for every leaf file of the input."""
@@ -144,7 +171,10 @@ def build_files(input_path: Path, max_depth: int = 5,
     for raw_path, data, origin in source:
         if log:
             log(f'[intake] {origin + " > " + raw_path if origin else raw_path}')
-        f = _new_extracted_file(raw_path, data, origin or default_origin, log)
+        f = _new_extracted_file(
+            raw_path, data, origin or default_origin, log,
+            skip_junk=skip_junk, skip_auxiliary=skip_auxiliary,
+        )
         files.append(f)
         if progress_cb:
             progress_cb(len(files), f.name)
@@ -198,7 +228,33 @@ def run(input_path: Path, output_dir: Path, *,
         log(f'[pipeline] Input: {input_path}')
 
     t0 = time.time()
-    files = build_files(input_path, max_depth=max_depth, log=log if not show_ui else None)
+    last_update = 0.0
+
+    def intake_cb(count: int, name: str) -> None:
+        if not sys.stdout.isatty():
+            return
+        nonlocal last_update
+        now = time.time()
+        if now - last_update < 0.06:
+            return
+        last_update = now
+        elapsed = max(0.001, now - t0)
+        speed = count / elapsed
+        trunc_name = truncate_middle(name, 28)
+        sys.stdout.write(f"\r  {ANSI.YELLOW}⚡ Đang bóc tách:{ANSI.RESET} {ANSI.BOLD}{ANSI.B_WHITE}{count:,}{ANSI.RESET} tệp {ANSI.GRAY}({speed:.0f} tệp/s) │ {trunc_name}{ANSI.RESET}{ANSI.CLEAR_TO_END}")
+        sys.stdout.flush()
+
+    files = build_files(
+        input_path, max_depth=max_depth,
+        skip_junk=skip_junk, skip_auxiliary=skip_auxiliary,
+        progress_cb=intake_cb if show_ui else None,
+        log=log if not show_ui else None,
+    )
+
+    if show_ui:
+        if sys.stdout.isatty():
+            sys.stdout.write(f"\r{ANSI.CLEAR_LINE}")
+            sys.stdout.flush()
 
     # Selection filtering
     for f in files:
@@ -215,6 +271,8 @@ def run(input_path: Path, output_dir: Path, *,
               f"{ANSI.GRAY}({time.time() - t0:.2f}s){ANSI.RESET}")
     elif log:
         log(f'[pipeline] Intake xong: {len(files)} file.')
+
+    gc.collect()
 
     # ── Stage 2: Document Conversion (MarkItDown / Docling) ─────────────────
     if show_ui:
@@ -239,6 +297,8 @@ def run(input_path: Path, output_dir: Path, *,
     else:
         if show_ui:
             print(f"  {ANSI.GRAY}✓ Không có tài liệu văn phòng cần chuyển đổi (Bỏ qua){ANSI.RESET}")
+
+    gc.collect()
 
     # ── Stage 3: GPU Vision OCR (Qwen2.5-VL-3B) ──────────────────────────────
     if show_ui:
@@ -272,7 +332,10 @@ def run(input_path: Path, output_dir: Path, *,
                 files, prompt=ocr_prompt, limit=ocr_limit,
                 progress_cb=lambda curr, tot, name, st: bar.update(curr, item_name=name, status=st)
             )
-            bar.finish(f"Đã nhận diện OCR thành công {ocr_ok}/{len(ocr_candidates)} hình ảnh.")
+            if ocr_ok > 0:
+                bar.finish(f"Đã nhận diện OCR thành công {ocr_ok}/{len(ocr_candidates)} hình ảnh.")
+            else:
+                bar.finish_warn(f"0/{len(ocr_candidates)} hình ảnh có văn bản nhận diện được.")
         else:
             ocr_ok = run_ocr(files, prompt=ocr_prompt, limit=ocr_limit, log=log)
     else:
@@ -288,6 +351,7 @@ def run(input_path: Path, output_dir: Path, *,
     # Free all retained media_bytes across all files to minimize memory before Stage 4
     for f in files:
         f.media_bytes = None
+    gc.collect()
 
     # ── Stage 4: Markdown Assembly & Output ──────────────────────────────────
     if show_ui:
@@ -305,31 +369,77 @@ def run(input_path: Path, output_dir: Path, *,
     individual_dir: Optional[Path] = None
 
     if mode in ('combined', 'both'):
-        md = build_combined_markdown(selected, stats, archive_name)
         combined_path = output_dir / f'{archive_name}_combined.md'
-        combined_path.write_text(md, encoding='utf-8')
 
     if mode in ('individual', 'both'):
         individual_dir = output_dir / f'{archive_name}_markdown'
-        individual_dir.mkdir(exist_ok=True)
-        for f in selected:
+        individual_dir.mkdir(parents=True, exist_ok=True)
+
+    bar = None
+    if show_ui and selected:
+        bar = ProgressBar(total=len(selected), label="Xuất Markdown", unit="tệp")
+
+    if mode == 'both':
+        def step_cb(curr: int, tot: int, name: str):
+            f = selected[curr - 1]
             target = individual_dir / (f.path + '.md')
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_text(build_individual_markdown(f), encoding='utf-8')
+            if bar:
+                bar.update(curr, item_name=name)
+
+        stream_write_combined_markdown(
+            combined_path, selected, stats, archive_name=archive_name,
+            progress_cb=step_cb, release_content=True
+        )
+
         index = (
             f'# 📂 Thư mục Markdown đã chuyển đổi: {archive_name}\n\n'
-            f'Tạo bởi **Archive2MD**. Tổng số file .md: **{len(selected)}**.\n\n'
-            + '\n'.join(f'- [{f.name}.md](./{f.path}.md) *({f.category}, {f.lines_count} dòng)*'
+            f'Tạo bởi **Archive2MD**. Tổng số file .md: **{len(selected):,}**.\n\n'
+            + '\n'.join(f'- [{f.name}.md](./{f.path}.md) *({f.category}, {f.lines_count:,} dòng)*'
                         for f in selected)
         )
         (individual_dir / 'README_INDEX.md').write_text(index, encoding='utf-8')
 
-    if show_ui:
+    elif mode == 'combined':
+        stream_write_combined_markdown(
+            combined_path, selected, stats, archive_name=archive_name,
+            progress_cb=lambda curr, tot, name: bar.update(curr, item_name=name) if bar else None,
+            release_content=True
+        )
+
+    elif mode == 'individual':
+        for i, f in enumerate(selected, 1):
+            target = individual_dir / (f.path + '.md')
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(build_individual_markdown(f), encoding='utf-8')
+            f.raw_content = ""
+            f.markdown_content = ""
+            if bar:
+                bar.update(i, item_name=f.name)
+
+        index = (
+            f'# 📂 Thư mục Markdown đã chuyển đổi: {archive_name}\n\n'
+            f'Tạo bởi **Archive2MD**. Tổng số file .md: **{len(selected):,}**.\n\n'
+            + '\n'.join(f'- [{f.name}.md](./{f.path}.md) *({f.category}, {f.lines_count:,} dòng)*'
+                        for f in selected)
+        )
+        (individual_dir / 'README_INDEX.md').write_text(index, encoding='utf-8')
+
+    if bar:
+        if combined_path and combined_path.exists():
+            out_sz = format_bytes(combined_path.stat().st_size)
+            bar.finish(f"Đã xuất '{combined_path.name}' ({out_sz}, ~{stats.selected_tokens:,} tokens)")
+        elif individual_dir:
+            bar.finish(f"Đã xuất thư mục '{individual_dir.name}' ({len(selected):,} tệp .md)")
+    elif show_ui:
         if combined_path and combined_path.exists():
             out_sz = format_bytes(combined_path.stat().st_size)
             print(f"  {ANSI.B_GREEN}✓{ANSI.RESET} Đã xuất '{combined_path.name}' ({out_sz}, ~{stats.selected_tokens:,} tokens) {ANSI.GRAY}({time.time() - t0:.2f}s){ANSI.RESET}")
         elif individual_dir:
-            print(f"  {ANSI.B_GREEN}✓{ANSI.RESET} Đã xuất thư mục '{individual_dir.name}' ({len(selected)} tệp .md) {ANSI.GRAY}({time.time() - t0:.2f}s){ANSI.RESET}")
+            print(f"  {ANSI.B_GREEN}✓{ANSI.RESET} Đã xuất thư mục '{individual_dir.name}' ({len(selected):,} tệp .md) {ANSI.GRAY}({time.time() - t0:.2f}s){ANSI.RESET}")
+
+    gc.collect()
 
     return RunResult(
         files=selected, stats=stats, output_dir=output_dir,

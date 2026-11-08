@@ -4,9 +4,11 @@
 # Zero-dependency, pure Python, native ANSI color and VT100 support on Windows.
 # ============================================================================
 import os
+import re
 import shutil
 import sys
 import time
+import unicodedata
 from typing import Optional
 
 
@@ -82,6 +84,21 @@ def format_bytes(size: int) -> str:
     return f"{size:.1f} TB"
 
 
+def display_width(text: str) -> int:
+    """Calculate the visual display column width of a string in terminal.
+    Strips ANSI escape sequences, counts wide/fullwidth and emojis as 2 columns.
+    """
+    clean = re.sub(r'\x1b\[[0-9;]*[a-zA-Z]', '', text)
+    w = 0
+    for ch in clean:
+        east = unicodedata.east_asian_width(ch)
+        if east in ('W', 'F') or ord(ch) >= 0x1F300:
+            w += 2
+        else:
+            w += 1
+    return w
+
+
 def truncate_middle(text: str, max_len: int) -> str:
     """Truncate text with ... in the middle if it exceeds max_len."""
     if len(text) <= max_len:
@@ -94,29 +111,33 @@ def truncate_middle(text: str, max_len: int) -> str:
 
 def print_banner(input_name: str, input_size: int, output_dir: str, mode: str,
                  ocr_enabled: bool, converter_name: str, ocr_name: str) -> None:
-    """Print an eye-catching, modern header banner with open-right border (never breaks)."""
+    """Print an eye-catching, modern header banner with perfectly matching borders."""
     width = min(get_term_width(), 68)
-    bot_line = "─" * width
+    top_prefix = "╭─ Archive2MD 📦➡️📝 · Trích Xuất Kho Lưu Trữ "
+    dashes_needed = max(4, width - display_width(top_prefix))
+    top_line = top_prefix + ("─" * dashes_needed)
+    bot_line = "╰" + ("─" * (display_width(top_line) - 1))
 
     size_str = format_bytes(input_size) if input_size > 0 else "Thư mục"
     ocr_str = ocr_name if ocr_enabled else "Tắt (Skip)"
 
     print()
-    print(f"{ANSI.B_CYAN}╭─ Archive2MD 📦➡️📝 · Trích Xuất Kho Lưu Trữ ────────────────{ANSI.RESET}")
+    print(f"{ANSI.B_CYAN}{top_line}{ANSI.RESET}")
     print(f"{ANSI.B_CYAN}│{ANSI.RESET}  {ANSI.GRAY}Tập tin   :{ANSI.RESET} {ANSI.BOLD}{ANSI.B_WHITE}{input_name}{ANSI.RESET} {ANSI.GRAY}({size_str}){ANSI.RESET}")
     print(f"{ANSI.B_CYAN}│{ANSI.RESET}  {ANSI.GRAY}Xuất ra   :{ANSI.RESET} {ANSI.B_WHITE}{output_dir}{ANSI.RESET} {ANSI.CYAN}[{mode.upper()}]{ANSI.RESET}")
     print(f"{ANSI.B_CYAN}│{ANSI.RESET}  {ANSI.GRAY}Bộ chuyển :{ANSI.RESET} {ANSI.GREEN}{converter_name}{ANSI.RESET}")
     print(f"{ANSI.B_CYAN}│{ANSI.RESET}  {ANSI.GRAY}Vision OCR:{ANSI.RESET} {ANSI.B_MAGENTA if ocr_enabled else ANSI.GRAY}{ocr_str}{ANSI.RESET}")
-    print(f"{ANSI.B_CYAN}╰{bot_line}{ANSI.RESET}")
+    print(f"{ANSI.B_CYAN}{bot_line}{ANSI.RESET}")
     print()
 
 
 def print_stage(step: int, total_steps: int, icon: str, title: str, subtitle: str = "") -> None:
-    """Print a clean stage divider without line wrapping."""
+    """Print a clean stage divider with matching width."""
     width = min(get_term_width(), 68)
-    dash_len = max(6, width - len(title) - 18)
-    line = "─" * dash_len
-    print(f"\n{ANSI.BOLD}{ANSI.B_BLUE}── [{step}/{total_steps}] {icon} {title} {line}{ANSI.RESET}")
+    stage_prefix = f"── [{step}/{total_steps}] {icon} {title} "
+    dash_len = max(4, width - display_width(stage_prefix))
+    line = stage_prefix + ("─" * dash_len)
+    print(f"\n{ANSI.BOLD}{ANSI.B_BLUE}{line}{ANSI.RESET}")
     if subtitle:
         print(f"   {ANSI.GRAY}└─ {subtitle}{ANSI.RESET}")
 
@@ -206,17 +227,30 @@ class ProgressBar:
         time_tag = f"{ANSI.GRAY}(Thời gian: {elapsed:.1f}s){ANSI.RESET}"
         print(f"  {icon} {msg} {time_tag}")
 
+    def finish_warn(self, message: str = "") -> None:
+        elapsed = time.time() - self.start_time
+        if self.is_tty:
+            sys.stdout.write(f"\r{ANSI.CLEAR_LINE}")
+            sys.stdout.flush()
+        icon = f"{ANSI.B_YELLOW}⚠{ANSI.RESET}"
+        msg = f"{ANSI.YELLOW}{message}{ANSI.RESET}"
+        time_tag = f"{ANSI.GRAY}(Thời gian: {elapsed:.1f}s){ANSI.RESET}"
+        print(f"  {icon} {msg} {time_tag}")
+
 
 def print_summary(stats, total_time: float, output_dir: str,
                   combined_path: Optional[str] = None,
                   individual_dir: Optional[str] = None,
                   research_path: Optional[str] = None) -> None:
-    """Print an exquisite completion summary card with open-right border (never breaks)."""
+    """Print an exquisite completion summary card with matching borders."""
     width = min(get_term_width(), 68)
-    bot_line = "─" * width
+    top_prefix = f"╭─ 🎉 HOÀN TẤT XỬ LÝ ({total_time:.2f}s) "
+    dashes_needed = max(4, width - display_width(top_prefix))
+    top_line = top_prefix + ("─" * dashes_needed)
+    bot_line = "╰" + ("─" * (display_width(top_line) - 1))
 
     print()
-    print(f"{ANSI.B_GREEN}╭─ 🎉 HOÀN TẤT XỬ LÝ ({total_time:.2f}s) ──────────────────────────{ANSI.RESET}")
+    print(f"{ANSI.B_GREEN}{top_line}{ANSI.RESET}")
     print(f"{ANSI.B_GREEN}│{ANSI.RESET}  {ANSI.GRAY}📦 Tổng số tệp quét được :{ANSI.RESET} {ANSI.BOLD}{ANSI.B_WHITE}{stats.total_files:,} tệp{ANSI.RESET}")
     print(f"{ANSI.B_GREEN}│{ANSI.RESET}  {ANSI.GRAY}✅ Tệp hợp lệ được chọn  :{ANSI.RESET} {ANSI.BOLD}{ANSI.B_WHITE}{stats.selected_count:,} tệp{ANSI.RESET} {ANSI.GRAY}(lọc {stats.junk_count + stats.auxiliary_count:,} rác/phụ trợ){ANSI.RESET}")
     if stats.converted_count > 0:
@@ -234,5 +268,5 @@ def print_summary(stats, total_time: float, output_dir: str,
     if research_path:
         print(f"{ANSI.B_GREEN}│{ANSI.RESET}   {ANSI.CYAN}├─ AI Research      :{ANSI.RESET} {ANSI.B_WHITE}{research_path}{ANSI.RESET}")
     print(f"{ANSI.B_GREEN}│{ANSI.RESET}   {ANSI.CYAN}└─ Thư mục kết quả  :{ANSI.RESET} {ANSI.B_WHITE}{output_dir}{ANSI.RESET}")
-    print(f"{ANSI.B_GREEN}╰{bot_line}{ANSI.RESET}")
+    print(f"{ANSI.B_GREEN}{bot_line}{ANSI.RESET}")
     print()

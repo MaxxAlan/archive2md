@@ -64,6 +64,26 @@ def _get_llm():
             clip_model_path=str(MMPROJ_FILE),
             verbose=False,
         )
+
+        # Patch _init_mtmd_context: execute vision projector on CPU to avoid Windows CUDA null-pointer crash in mtmd.dll
+        # Main LLM matrix operations continue running with full NVIDIA GPU acceleration (n_gpu_layers=99)
+        def _safe_init_mtmd(llama_model):
+            if chat_handler.mtmd_ctx is not None:
+                return
+            ctx_params = chat_handler._mtmd_cpp.mtmd_context_params_default()
+            ctx_params.use_gpu = False  # Avoid Windows mtmd.dll GPU context access violation
+            ctx_params.print_timings = False
+            ctx_params.n_threads = llama_model.n_threads
+            chat_handler.mtmd_ctx = chat_handler._mtmd_cpp.mtmd_init_from_file(
+                chat_handler.clip_model_path.encode(), llama_model.model, ctx_params
+            )
+            if chat_handler.mtmd_ctx is None:
+                raise ValueError(f"Failed to load mtmd context from: {chat_handler.clip_model_path}")
+            if not chat_handler._mtmd_cpp.mtmd_support_vision(chat_handler.mtmd_ctx):
+                raise ValueError("Vision is not supported by this model")
+
+        chat_handler._init_mtmd_context = _safe_init_mtmd
+
         _llm_instance = Llama(
             model_path=str(MODEL_FILE),
             chat_handler=chat_handler,
@@ -136,7 +156,8 @@ class QwenOcrProvider(OcrProvider):
         data_uri = f'data:{mime};base64,{base64.b64encode(data).decode("ascii")}'
         user_text = prompt or (
             'Ban la chuyen gia OCR tai lieu. Hay nhan dien va trich xuat toan bo chu viet, '
-            'so lieu, ma nguon, bang bieu va de bai trong hinh anh nay thanh Markdown ro rang, day du.'
+            'so lieu, ma nguon, bang bieu va de bai trong hinh anh nay thanh Markdown ro rang, day du. '
+            'Chi trich xuat dung nhung gi xuat hien tren anh, khong bia dat, khong lap lai.'
         )
 
         try:
