@@ -112,7 +112,7 @@ echo [*] Dang cap nhat pip, setuptools va wheel...
 echo.
 echo [*] Dang cai dat toan bo thu vien (MarkItDown, Office, Archive, NVIDIA CUDA)...
 echo     (Tat ca goi duoc cache gon gang trong .\cache\pip de tai nhanh)
-%VENV_PYTHON% -m pip install -r requirements.txt
+%VENV_PYTHON% -m pip install --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124 -r requirements.txt
 if errorlevel 1 (
     echo [X] Co loi xay ra trong qua trinh cai dat thu vien.
     pause
