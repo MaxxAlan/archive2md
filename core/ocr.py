@@ -1,5 +1,5 @@
 # ============================================================================
-# ocr — vision OCR orchestration over the services registry (Qwen local).
+# ocr — vision OCR orchestration over the services registry (MinerU2.5-Pro local).
 # Degrades per-file: an OCR failure marks the file failed, pipeline continues.
 # ============================================================================
 import time

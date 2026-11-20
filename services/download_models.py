@@ -1,6 +1,6 @@
 # ============================================================================
 # services/download_models.py — Automated Vision OCR Model Downloader.
-# Downloads Qwen2.5-VL-3B GGUF weights & vision projector from Hugging Face.
+# Downloads MinerU2.5-Pro-2604-1.2B GGUF weights & vision projector from Hugging Face.
 # Features chunked streaming, resume support (HTTP Range), and visual progress.
 # ============================================================================
 import argparse
@@ -13,24 +13,25 @@ from services.base import init_cache_system, repo_root
 
 MODELS_DIR = repo_root() / 'models'
 
-# Official Hugging Face repository and model files
-HF_REPO = 'Qwen/Qwen2.5-VL-3B-Instruct-GGUF'
+# Hugging Face repository for MinerU2.5-Pro quantized GGUF weights
+# (Based on official opendatalab/MinerU2.5-Pro-2604-1.2B)
+HF_REPO = 'mradermacher/MinerU2.5-Pro-2604-1.2B-GGUF'
 MODELS = {
-    'Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf': {
-        'url': f'https://huggingface.co/{HF_REPO}/resolve/main/Qwen2.5-VL-3B-Instruct-Q4_K_M.gguf',
-        'desc': 'Text backbone & language model (Q4_K_M)',
-        'min_size': 1_800_000_000,   # ~1.93 GB
+    'MinerU2.5-Pro-2604-1.2B.Q4_K_M.gguf': {
+        'url': f'https://huggingface.co/{HF_REPO}/resolve/main/MinerU2.5-Pro-2604-1.2B.Q4_K_M.gguf',
+        'desc': 'Text backbone & language model (1.2B Q4_K_M)',
+        'min_size': 350_000_000,   # ~379 MB
     },
-    'mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf': {
-        'url': f'https://huggingface.co/{HF_REPO}/resolve/main/mmproj-Qwen2.5-VL-3B-Instruct-Q8_0.gguf',
+    'MinerU2.5-Pro-2604-1.2B.mmproj-Q8_0.gguf': {
+        'url': f'https://huggingface.co/{HF_REPO}/resolve/main/MinerU2.5-Pro-2604-1.2B.mmproj-Q8_0.gguf',
         'desc': 'Multimodal vision projector (Q8_0)',
-        'min_size': 800_000_000,     # ~845 MB
+        'min_size': 650_000_000,   # ~676 MB
     },
 }
 
 
 def check_models_present() -> bool:
-    """Return True if all required GGUF model files exist and meet minimum size."""
+    """Return True if all required MinerU GGUF model files exist and meet minimum size."""
     for filename, info in MODELS.items():
         path = MODELS_DIR / filename
         if not path.exists() or path.stat().st_size < info['min_size']:
@@ -141,18 +142,18 @@ def ensure_models(interactive: bool = True, force: bool = False) -> bool:
             missing.append((filename, info))
 
     if not missing:
-        print("[*] Toàn bộ file mô hình Vision OCR (Qwen2.5-VL-3B) đã có sẵn trong models/.")
+        print("[*] Toàn bộ file mô hình Vision OCR (MinerU2.5-Pro-1.2B) đã có sẵn trong models/.")
         return True
 
     print("\n" + "=" * 70)
-    print("        Archive2MD — Trình Tải Mô Hình Vision AI (Qwen2.5-VL-3B)")
+    print("        Archive2MD — Trình Tải Mô Hình Vision AI (MinerU2.5-Pro-1.2B)")
     print("=" * 70)
     print("Phát hiện chưa có các tệp mô hình GGUF sau trong thư mục models/:")
     for fname, info in missing:
         print(f"  - {fname:<42} ({info['desc']})")
-    print("\nTổng dung lượng cần tải: ~2.75 GB từ Hugging Face.")
-    print("Mô hình này cho phép tự động nhận diện chữ, bảng biểu, đề bài trong ảnh")
-    print("và chạy trực tiếp trên GPU NVIDIA (CUDA) với tốc độ cao.")
+    print("\nTổng dung lượng cần tải: ~1.05 GB từ Hugging Face.")
+    print("Mô hình MinerU2.5-Pro (OpenDataLab) chuyên biệt nhận diện chữ, bảng biểu, công thức toán")
+    print("và chạy trực tiếp trên GPU NVIDIA (CUDA) với tốc độ cao, siêu tiết kiệm VRAM.")
 
     if interactive:
         try:
@@ -175,12 +176,12 @@ def ensure_models(interactive: bool = True, force: bool = False) -> bool:
             break
 
     if success:
-        print("\n[✓] Hoàn tất tải toàn bộ mô hình Vision OCR!")
+        print("\n[✓] Hoàn tất tải toàn bộ mô hình MinerU2.5-Pro!")
     return success
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Tải mô hình Vision AI Qwen2.5-VL-3B cho Archive2MD")
+    parser = argparse.ArgumentParser(description="Tải mô hình Vision AI MinerU2.5-Pro-1.2B cho Archive2MD")
     parser.add_argument('--check', action='store_true', help="Chỉ kiểm tra mô hình đã đủ chưa (0=đủ, 1=thiếu)")
     parser.add_argument('--auto', '-y', '--yes', action='store_true', help="Tự động tải không cần hỏi xác nhận")
     parser.add_argument('--force', action='store_true', help="Tải lại ngay cả khi file đã tồn tại")

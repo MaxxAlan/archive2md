@@ -120,7 +120,7 @@ if errorlevel 1 (
 )
 
 rem ----------------------------------------------------------------------------
-rem Buoc 3: Kiem tra va tai mo hinh Vision AI Qwen2.5-VL-3B neu thieu
+rem Buoc 3: Kiem tra va tai mo hinh Vision AI MinerU2.5-Pro-1.2B neu thieu
 rem ----------------------------------------------------------------------------
 echo.
 echo [*] Kiem tra mo hinh Vision AI OCR (models/)...

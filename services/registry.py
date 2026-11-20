@@ -91,8 +91,8 @@ def bootstrap() -> None:
     """Register built-in backends."""
     from .docling import DoclingConverter
     from .markitdown import MarkItDownConverter
-    from .qwen_ocr import QwenOcrProvider
+    from .mineru_ocr import MinerUOcrProvider
 
     registry.register_converter(DoclingConverter())
     registry.register_converter(MarkItDownConverter())
-    registry.register_ocr_provider(QwenOcrProvider())
+    registry.register_ocr_provider(MinerUOcrProvider())

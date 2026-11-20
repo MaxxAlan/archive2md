@@ -300,9 +300,9 @@ def run(input_path: Path, output_dir: Path, *,
 
     gc.collect()
 
-    # ── Stage 3: GPU Vision OCR (Qwen2.5-VL-3B) ──────────────────────────────
+    # ── Stage 3: GPU Vision OCR (MinerU2.5-Pro-1.2B) ──────────────────────────
     if show_ui:
-        print_stage(3, total_stages, "👁️", "Nhận diện thị giác Vision AI / OCR", "Qwen2.5-VL-3B trên NVIDIA GPU")
+        print_stage(3, total_stages, "👁️", "Nhận diện thị giác Vision AI / OCR", "MinerU2.5-Pro-1.2B trên NVIDIA GPU")
 
     ocr_candidates = [
         f for f in files
@@ -318,7 +318,7 @@ def run(input_path: Path, output_dir: Path, *,
         print(f"  {ANSI.BOLD}{ANSI.B_YELLOW}💡 Phát hiện {len(ocr_candidates)} tệp hình ảnh / tài liệu trực quan (PNG, JPG, PDF...).{ANSI.RESET}")
         try:
             ans = input(
-                f"  {ANSI.BOLD}{ANSI.B_CYAN}[?] Bạn có muốn dùng AI Vision OCR (Qwen2.5-VL GPU) để nhận diện chữ trong các tệp này không? [Y/n]: {ANSI.RESET}"
+                f"  {ANSI.BOLD}{ANSI.B_CYAN}[?] Bạn có muốn dùng AI Vision OCR (MinerU2.5-Pro GPU) để nhận diện chữ trong các tệp này không? [Y/n]: {ANSI.RESET}"
             ).strip().lower()
             ocr = (ans == '' or ans.startswith('y') or ans == 'c' or ans.startswith('co'))
         except (EOFError, KeyboardInterrupt):

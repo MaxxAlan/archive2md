@@ -103,7 +103,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument('--research', action='store_true', help='Tạo báo cáo AI Research (Gemini, cần GEMINI_API_KEY)')
     parser.add_argument('--status', action='store_true', help='Hiển thị trạng thái các backend rồi thoát')
     parser.add_argument('--download-models', action='store_true',
-                        help='Kiểm tra và tự động tải mô hình Vision AI Qwen2.5-VL-3B từ Hugging Face')
+                        help='Kiểm tra và tự động tải mô hình Vision AI MinerU2.5-Pro-1.2B từ Hugging Face')
     parser.add_argument('--interactive', '-it', dest='interactive', action='store_true',
                         help='Chế độ hỏi đáp tương tác từng bước (Interactive Wizard)')
     args = parser.parse_args(argv)
